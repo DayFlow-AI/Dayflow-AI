@@ -7,8 +7,8 @@ from db_conf.db import Base
 class UsersORM(Base):
     __tablename__ = "users"
 
-    username: Mapped[str]
-    password: Mapped[str]
+    username: Mapped[str] = mapped_column(unique=True)
+    password: Mapped[str | None]
     email: Mapped[str]
     jwt_tokens: Mapped[list["UsersJWTStorageORM"]] = relationship(
         back_populates="user",
