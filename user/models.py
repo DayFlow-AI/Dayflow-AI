@@ -7,9 +7,12 @@ from db_conf.db import Base
 class UsersORM(Base):
     __tablename__ = "users"
 
-    username: Mapped[str] = mapped_column(unique=True)
-    password: Mapped[str | None]
-    email: Mapped[str]
+    username: Mapped[str] = mapped_column(unique=True, index=True)
+    password: Mapped[str] = mapped_column(nullable=True)
+    email: Mapped[str] = mapped_column(unique=True, index=True)
+    oauth: Mapped[bool] = mapped_column(default=False, nullable=True)
+    google_refresh_token: Mapped[str] = mapped_column(nullable=True)
+    google_sub: Mapped[str] = mapped_column(nullable=True, index=True, unique=True)
     jwt_tokens: Mapped[list["UsersJWTStorageORM"]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
