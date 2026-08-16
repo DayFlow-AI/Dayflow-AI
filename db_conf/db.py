@@ -1,18 +1,15 @@
-from dotenv import load_dotenv
-from os import getenv as gv
-from urllib.parse import quote_plus
 from datetime import datetime
 from fastapi import Depends
 from sqlalchemy import DateTime, func
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from typing import Annotated
+from proj_settings.env_conf import settings
 
-load_dotenv()
 
-db_pass = quote_plus(gv("DB_PASS"))
-db_user = gv("DB_USER")
-db_schema = gv("DB_SCHEMA")
+db_pass = settings.db_pass
+db_user = settings.db_user
+db_schema = settings.db_schema
 
 if not all([db_user, db_pass, db_schema]):
     raise RuntimeError("environment variables not set check env file")
