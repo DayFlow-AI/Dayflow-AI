@@ -5,7 +5,7 @@ __pycache__/
 .mypy_cache/
 .idea/
 .vscode/
-.env
+proj_settings/.env
 .env.*
 client_secret_*.json
 *.apps.googleusercontent.com.json
