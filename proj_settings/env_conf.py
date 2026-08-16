@@ -18,5 +18,6 @@ class Settings(BaseSettings):
     db_pass: str
     db_schema: str
     db_user: str
+    user_scopes: list[str]
 
 settings = Settings()
