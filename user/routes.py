@@ -5,6 +5,7 @@ from db_conf.db import SessionDep
 from user.models import UsersORM, UsersJWTStorageORM
 from user.schemas import UserRegisterSchema, UserLoginSchema, AuthSuccessSchema, UserPublicSchema
 from user.utils import conf, hashing, password_hash, gen_jwt, access_security
+from fastapi.sse import EventSourceResponse
 
 router = APIRouter(prefix="/api/user", tags=["user"])
 
@@ -110,8 +111,17 @@ async def logout_from_all_devices(db: SessionDep,
         401: {"description": "not authorized / session expired"}
     },
 )
-async def me(db: SessionDep, credentials: JwtAuthorizationCredentials = Depends(access_security)) -> UserPublicSchema:
-    user = (await db.execute(
-        select(UsersORM).where(UsersORM.id == int(credentials.subject["uid"]))
-    )).scalar_one()
-    return UserPublicSchema.model_validate(user)
+async def me(db: SessionDep, credentials: JwtAuthorizationCredentials = Depends(
+    access_security)) -> UserPublicSchema:
+    try:
+        user = (await db.execute(
+            select(UsersORM).where(UsersORM.id == int(credentials.subject["uid"]))
+        )).scalar_one_or_none()
+        if credentials is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+    except Exception:
+        response_err = Response(status_code=status.HTTP_401_UNAUTHORIZED)
+        access_security.unset_access_cookie(response_err)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+    else:
+        return UserPublicSchema.model_validate(user)

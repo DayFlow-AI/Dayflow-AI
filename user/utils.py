@@ -10,7 +10,7 @@ from proj_settings.env_conf import settings
 
 sec_key = settings.jwt_secret_key
 password_hash = PasswordHash.recommended()
-access_security = JwtAccessBearerCookie(secret_key=sec_key)
+access_security = JwtAccessBearerCookie(secret_key=sec_key, auto_error=False)
 
 
 def conf(jwt) -> dict:
