@@ -1,11 +1,12 @@
 from datetime import datetime
+from typing import Annotated
+
 from fastapi import Depends
 from sqlalchemy import DateTime, func
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from typing import Annotated
-from proj_settings.env_conf import settings
 
+from proj_settings.env_conf import settings
 
 db_pass = settings.db_pass
 db_user = settings.db_user

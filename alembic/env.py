@@ -5,12 +5,10 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
+import plan_board.models  # noqa: F401
+import user.models  # noqa: F401
 from alembic import context
-
 from db_conf.db import Base, db_url
-
-# Импорт моделей обязателен: только так они регистрируются в Base.metadata
-from user.models import UsersORM, UsersJWTStorageORM
 
 config = context.config
 
