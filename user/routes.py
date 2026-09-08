@@ -1,16 +1,33 @@
-from fastapi import HTTPException, Response, APIRouter, status, Depends
-from fastapi_jwt import JwtAuthorizationCredentials
-from sqlalchemy import select, exists, or_, delete
+from fastapi import APIRouter, HTTPException, Response, status
+from fastapi.logger import logger
+from sqlalchemy import delete, exists, or_, select
+from sqlalchemy.exc import SQLAlchemyError
+from starlette.responses import JSONResponse
+
 from db_conf.db import SessionDep
-from user.models import UsersORM, UsersJWTStorageORM
-from user.schemas import UserRegisterSchema, UserLoginSchema, AuthSuccessSchema, UserPublicSchema
-from user.utils import conf, hashing, password_hash, gen_jwt, access_security
-from fastapi.sse import EventSourceResponse
+from global_utils import AccessCredentials, RefreshCredentials
+from user.models import UsersJWTStorageORM, UsersORM
+from user.schemas import (
+    AuthSuccessSchema,
+    ChangePasswordSchema,
+    PasswordResponseSchema,
+    UserLoginSchema,
+    UserPublicSchema,
+    UserRegisterSchema,
+)
+from user.utils import (
+    access_security,
+    access_token_conf,
+    gen_jwt,
+    password_hash,
+    refresh_token_conf,
+    user_compile,
+)
 
-router = APIRouter(prefix="/api/user", tags=["user"])
+user_router = APIRouter(prefix="/api/user", tags=["user"])
 
 
-@router.post(
+@user_router.post(
     "/register",
     summary="create and auth user",
     response_model=AuthSuccessSchema,
@@ -20,22 +37,26 @@ router = APIRouter(prefix="/api/user", tags=["user"])
     },
 )
 async def register(user: UserRegisterSchema, db: SessionDep) -> Response:
-    query = select(exists().where(
-        or_(
-            UsersORM.email == user.email, UsersORM.username == user.username
+    query = select(
+        exists().where(
+            or_(UsersORM.email == user.email, UsersORM.username == user.username)
         )
-    ))
-    exists_result = await db.execute(query)
-    if not exists_result.scalar():
-        new_user = await hashing(user, db)
-        jwt = await gen_jwt(new_user, db)
+    )
+    exists_result = (await db.execute(query)).scalar()
+    if not exists_result:
+        new_user = await user_compile(user, db)
+        jwt = await gen_jwt(new_user, db, True)
         response = Response(status_code=status.HTTP_201_CREATED)
-        response.set_cookie(**conf(jwt))
+        response.set_cookie(**access_token_conf(jwt["access_token"]))
+        response.set_cookie(**refresh_token_conf(jwt["refresh_token"]))
         return response
-    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email or username already registered")
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail="Email or username already registered",
+    )
 
 
-@router.post(
+@user_router.post(
     "/login",
     summary="Login a user",
     response_model=AuthSuccessSchema,
@@ -46,24 +67,22 @@ async def register(user: UserRegisterSchema, db: SessionDep) -> Response:
 )
 async def login_user(login: UserLoginSchema, db: SessionDep) -> Response:
     query = select(UsersORM).where(
-        or_(
-            UsersORM.email == login.login, UsersORM.username == login.login
-        )
+        or_(UsersORM.email == login.login, UsersORM.username == login.login)
     )
-    exists_login = await db.execute(query)
-    exists_login = exists_login.scalar()
+    exists_login = (await db.execute(query)).scalar()
     if exists_login:
         access = password_hash.verify(login.password, exists_login.password)
         if access:
-            jwt = await gen_jwt(exists_login, db)
+            jwt = await gen_jwt(exists_login, db, True)
             response = Response(status_code=status.HTTP_200_OK)
-            response.set_cookie(**conf(jwt))
+            response.set_cookie(**access_token_conf(jwt["access_token"]))
+            response.set_cookie(**refresh_token_conf(jwt["refresh_token"]))
             return response
         raise HTTPException(status_code=401, detail="Incorrect password")
     raise HTTPException(status_code=400, detail="Incorrect email or username")
 
 
-@router.post(
+@user_router.post(
     "/logout",
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
@@ -71,17 +90,20 @@ async def login_user(login: UserLoginSchema, db: SessionDep) -> Response:
         401: {"description": "not authorized / session expired"},
     },
 )
-async def logout(db: SessionDep, credentials: JwtAuthorizationCredentials = Depends(access_security)) -> Response:
+async def logout(db: SessionDep, credentials: RefreshCredentials) -> Response:
     await db.execute(
-        delete(UsersJWTStorageORM).where(UsersJWTStorageORM.jwt_token == credentials.jti)
+        delete(UsersJWTStorageORM).where(
+            UsersJWTStorageORM.refresh_jti == credentials.jti
+        )
     )
     await db.commit()
     response = Response(status_code=status.HTTP_204_NO_CONTENT)
     access_security.unset_access_cookie(response)
+    response.set_cookie(**refresh_token_conf(delete=True))
     return response
 
 
-@router.post(
+@user_router.post(
     "/logout_from_all_devices",
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
@@ -89,8 +111,9 @@ async def logout(db: SessionDep, credentials: JwtAuthorizationCredentials = Depe
         401: {"description": "not authorized / session expired"},
     },
 )
-async def logout_from_all_devices(db: SessionDep,
-                                  credentials: JwtAuthorizationCredentials = Depends(access_security)) -> Response:
+async def logout_from_all_devices(
+    db: SessionDep, credentials: AccessCredentials
+) -> Response:
     user_id = int(credentials.subject["uid"])
     await db.execute(
         delete(UsersJWTStorageORM).where(UsersJWTStorageORM.user_id == user_id)
@@ -98,30 +121,118 @@ async def logout_from_all_devices(db: SessionDep,
     await db.commit()
     response = Response(status_code=status.HTTP_204_NO_CONTENT)
     access_security.unset_access_cookie(response)
+    response.set_cookie(**refresh_token_conf(delete=True))
     return response
 
 
-@router.get(
+@user_router.get(
     "/me",
     response_model=UserPublicSchema,
     status_code=status.HTTP_200_OK,
     summary="get current user",
     response_description="Authorized: user data. 401 - not authorized/session expired",
+    responses={401: {"description": "not authorized / session expired"}},
+)
+async def me(db: SessionDep, credentials: AccessCredentials) -> UserPublicSchema:
+    if credentials is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Expired")
+    try:
+        user = await db.get(UsersORM, int(credentials.subject["uid"]))
+    except SQLAlchemyError as e:
+        logger.error(f"Me check error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal Server Error",
+        )
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User Does Not Exist"
+        )
+    return UserPublicSchema.model_validate(user)
+
+
+@user_router.get(
+    "/refresh",
+    response_description="Refresh token check",
+    description="check refresh token and create new credential if possible",
     responses={
-        401: {"description": "not authorized / session expired"}
+        200: {"description": "refresh token recreated"},
+        401: {"description": "not authorized / session expired"},
     },
 )
-async def me(db: SessionDep, credentials: JwtAuthorizationCredentials = Depends(
-    access_security)) -> UserPublicSchema:
+async def refresh(db: SessionDep, credentials: RefreshCredentials):
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
     try:
-        user = (await db.execute(
-            select(UsersORM).where(UsersORM.id == int(credentials.subject["uid"]))
-        )).scalar_one_or_none()
-        if credentials is None:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
-    except Exception:
-        response_err = Response(status_code=status.HTTP_401_UNAUTHORIZED)
-        access_security.unset_access_cookie(response_err)
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+        # TODO: Make remove expired refresh-tokens
+
+        token_record = (
+            await db.execute(
+                select(UsersJWTStorageORM).where(
+                    UsersJWTStorageORM.user_id == int(credentials.subject["uid"]),
+                    UsersJWTStorageORM.refresh_jti == credentials.jti,
+                )
+            )
+        ).scalar_one_or_none()
+
+        if token_record is None:
+            raise HTTPException(status_code=401, detail="Refresh token not found")
+
+        jwt = await gen_jwt(token_record.user_id, db)
+        logger.info("Generated new ACCESS TOKEN")
+        response = Response(status_code=status.HTTP_200_OK)
+        response.set_cookie(**access_token_conf(jwt["access_token"]))
+    except HTTPException:
+        raise
+    except SQLAlchemyError as e:
+        logger.error(f"Refresh check error: {e}")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Expired")
     else:
-        return UserPublicSchema.model_validate(user)
+        return response
+
+
+@user_router.post(
+    "/change_password",
+    status_code=status.HTTP_201_CREATED,
+    response_model=PasswordResponseSchema,
+    description="Change password and remove credentials if changed",
+    tags=["user_management"],
+)
+async def change_password(
+    db: SessionDep, credentials: AccessCredentials, income_data: ChangePasswordSchema
+):
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="Invalid user token")
+    if (income_data.new_password or income_data.current_password) is None:
+        raise HTTPException(status_code=400, detail="Incorrect password")
+    try:
+        user_to_change = await db.get(UsersORM, int(credentials.subject["uid"]))
+        if not user_to_change:
+            raise HTTPException(status_code=404, detail="User Does Not Exist")
+        access = password_hash.verify(
+            income_data.current_password, user_to_change.password
+        )
+        if not access:
+            raise HTTPException(status_code=400, detail="Incorrect password")
+        if income_data.new_password == income_data.current_password:
+            raise HTTPException(status_code=400, detail="New Password is same")
+        user_to_change.password = password_hash.hash(income_data.new_password)
+        await db.execute(
+            delete(UsersJWTStorageORM).where(
+                UsersJWTStorageORM.user_id == int(credentials.subject["uid"])
+            )
+        )
+    except SQLAlchemyError as e:
+        logger.error(f"Change password error: {e}")
+        raise HTTPException(status_code=500, detail="Can`t change password")
+    except HTTPException:
+        raise
+    else:
+        await db.commit()
+        response = JSONResponse(
+            status_code=status.HTTP_201_CREATED,
+            content={"detail": "Password changed successfully, please log in again"},
+        )
+        access_security.unset_access_cookie(response)
+        response.set_cookie(**refresh_token_conf(delete=True))
+        return response

@@ -13,16 +13,17 @@ class UsersORM(Base):
     oauth: Mapped[bool] = mapped_column(default=False, nullable=True)
     google_refresh_token: Mapped[str] = mapped_column(nullable=True)
     google_sub: Mapped[str] = mapped_column(nullable=True, index=True, unique=True)
-    jwt_tokens: Mapped[list["UsersJWTStorageORM"]] = relationship(
+    jwt_tokens: Mapped[list[UsersJWTStorageORM]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
     )
 
+
 class UsersJWTStorageORM(Base):
     __tablename__ = "user_jwt_storage"
-
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", onupdate="CASCADE", ondelete="CASCADE"))
-    username: Mapped[str]
-    device_type: Mapped[str | None] = mapped_column(default="undefined-device")
-    jwt_token: Mapped[str]
-    user : Mapped["UsersORM"] = relationship(back_populates="jwt_tokens")
+    # TODO: Organize the expired_at column
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", onupdate="CASCADE", ondelete="CASCADE")
+    )
+    refresh_jti: Mapped[str]
+    user: Mapped[UsersORM] = relationship(back_populates="jwt_tokens")

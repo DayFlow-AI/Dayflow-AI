@@ -1,64 +1,89 @@
 from uuid import uuid4
-from fastapi import HTTPException, Depends, status
-from fastapi_jwt import JwtAccessBearerCookie, JwtAuthorizationCredentials
+
+from fastapi import HTTPException
+from fastapi_jwt import JwtAccessBearerCookie, JwtRefreshCookie
 from pwdlib import PasswordHash
-from sqlalchemy import select
-from user.schemas import UserRegisterSchema
-from user.models import UsersORM, UsersJWTStorageORM
+from sqlalchemy.exc import SQLAlchemyError
+
 from db_conf.db import SessionDep
 from proj_settings.env_conf import settings
+from user.models import UsersJWTStorageORM, UsersORM
+from user.schemas import UserRegisterSchema
 
-sec_key = settings.jwt_secret_key
+sec_key_access = settings.jwt_secret_key
+sec_key_refresh = settings.jwt_secret_refresh_key
 password_hash = PasswordHash.recommended()
-access_security = JwtAccessBearerCookie(secret_key=sec_key, auto_error=False)
+access_security = JwtAccessBearerCookie(secret_key=sec_key_access)
+refresh_security = JwtRefreshCookie(secret_key=sec_key_refresh)
 
 
-def conf(jwt) -> dict:
-    secure = settings.jwt_secure
+def access_token_conf(access_token) -> dict:
     return {
         "key": "access_token_cookie",
-        "value": jwt,
+        "value": access_token,
         "httponly": True,
-        "secure": secure,
+        "secure": False,
         "samesite": "lax",
         "max_age": 900,
         "path": "/",
     }
 
 
-async def hashing(user: UserRegisterSchema, db: SessionDep) -> UsersORM:
+def refresh_token_conf(refresh_token: str = "", delete=False) -> dict:
+    return {
+        "key": "refresh_token_cookie",
+        "value": refresh_token,
+        "httponly": True,
+        "secure": False,
+        "samesite": "lax",
+        "max_age": -1 if delete else 2678400,
+        "path": "/api/user/refresh",
+    }
+
+
+async def user_compile(user: UserRegisterSchema, db: SessionDep) -> UsersORM:
     try:
         hashed = password_hash.hash(user.password)
         new_user = UsersORM(username=user.username, email=user.email, password=hashed)
         db.add(new_user)
         await db.commit()
-    except Exception as e:
-        print(e)
+    except SQLAlchemyError:
         await db.rollback()
         raise HTTPException(status_code=400, detail="Incorrect username or password")
     return new_user
 
 
-async def gen_jwt(hashed_user: UsersORM, db: SessionDep) -> str:
+async def gen_jwt(
+    hashed_user: UsersORM, db: SessionDep, with_refresh: bool = False
+) -> dict[str, str]:
     try:
-        jti = str(uuid4())
-        jwt = access_security.create_access_token(
-            subject={"uid": str(hashed_user.id)},
-            unique_identifier=jti,
+        hashed_user = hashed_user.id if with_refresh else hashed_user
+        jti_refresh = str(uuid4()) if with_refresh else None
+        jti_access = str(uuid4())
+
+        refresh_token = (
+            refresh_security.create_refresh_token(
+                subject={"uid": str(hashed_user)},
+                unique_identifier=jti_refresh,
+            )
+            if jti_refresh
+            else None
         )
-        db.add(UsersJWTStorageORM(user_id=hashed_user.id, username=hashed_user.username, jwt_token=jti))
+        access_token = access_security.create_access_token(
+            subject={"uid": str(hashed_user)},
+            unique_identifier=jti_access,
+        )
+        if refresh_token:
+            db.add(
+                UsersJWTStorageORM(
+                    user_id=hashed_user,
+                    refresh_jti=jti_refresh,
+                )
+            )
         await db.commit()
-        return jwt
-    except Exception:
+        if refresh_token:
+            return {"access_token": access_token, "refresh_token": refresh_token}
+        return {"access_token": access_token}
+    except SQLAlchemyError:
         await db.rollback()
         raise HTTPException(status_code=500, detail="Cannot create new jwt")
-
-
-async def require_valid_session(db: SessionDep, credentials: JwtAuthorizationCredentials = Depends(
-    access_security)) -> JwtAuthorizationCredentials:
-    session = (await db.execute(
-        select(UsersJWTStorageORM).where(UsersJWTStorageORM.jwt_token == credentials.jti)
-    )).scalar_one_or_none()
-    if session is None:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Session revoked")
-    return credentials
