@@ -1,7 +1,9 @@
 from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ENV_FILE = Path(__file__).resolve().parent / ".env"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -11,7 +13,7 @@ class Settings(BaseSettings):
     )
 
     jwt_secret_key: str
-    jwt_secure: bool = False
+    jwt_secret_refresh_key: str
     client_id: str
     client_sec: str
     redirect_uri: str
@@ -19,5 +21,10 @@ class Settings(BaseSettings):
     db_schema: str
     db_user: str
     user_scopes: list[str]
+
+    host: str = "127.0.0.1"
+    port: int = 8000
+    cors_origins: list[str] = []
+
 
 settings = Settings()
