@@ -2,7 +2,7 @@ from pydantic import BaseModel
 
 
 class ChatSchema(BaseModel):
-    title: str
+    title_test_ci: str
 
 
 class ChatOutSchema(BaseModel):
