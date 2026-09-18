@@ -134,8 +134,6 @@ async def logout_from_all_devices(
     responses={401: {"description": "not authorized / session expired"}},
 )
 async def me(db: SessionDep, credentials: AccessCredentials) -> UserPublicSchema:
-    if credentials is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Expired")
     try:
         user = await db.get(UsersORM, int(credentials.subject["uid"]))
     except SQLAlchemyError as e:
@@ -161,11 +159,7 @@ async def me(db: SessionDep, credentials: AccessCredentials) -> UserPublicSchema
     },
 )
 async def refresh(db: SessionDep, credentials: RefreshCredentials):
-    if credentials is None:
-        raise HTTPException(status_code=401, detail="Invalid refresh token")
     try:
-        # TODO: Make remove expired refresh-tokens
-
         token_record = (
             await db.execute(
                 select(UsersJWTStorageORM).where(
@@ -201,8 +195,6 @@ async def refresh(db: SessionDep, credentials: RefreshCredentials):
 async def change_password(
     db: SessionDep, credentials: AccessCredentials, income_data: ChangePasswordSchema
 ):
-    if credentials is None:
-        raise HTTPException(status_code=401, detail="Invalid user token")
     if (income_data.new_password or income_data.current_password) is None:
         raise HTTPException(status_code=400, detail="Incorrect password")
     try:

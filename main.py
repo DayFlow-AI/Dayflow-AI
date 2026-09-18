@@ -2,6 +2,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from plan_board.routes import plan_board_router
 from plan_board.ws import ws_router
 from proj_settings.env_conf import settings
 from user.oauth2_0.routes import oauth2_router
@@ -19,6 +20,8 @@ app.add_middleware(
 app.include_router(user_router)
 app.include_router(oauth2_router)
 app.include_router(ws_router)
+
+app.include_router(plan_board_router)
 
 if __name__ == "__main__":
     uvicorn.run(

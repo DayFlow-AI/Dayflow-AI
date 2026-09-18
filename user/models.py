@@ -1,4 +1,4 @@
-from sqlalchemy import ForeignKey
+from sqlalchemy import BigInteger, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db_conf.db import Base
@@ -21,9 +21,9 @@ class UsersORM(Base):
 
 class UsersJWTStorageORM(Base):
     __tablename__ = "user_jwt_storage"
-    # TODO: Organize the expired_at column
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", onupdate="CASCADE", ondelete="CASCADE")
     )
     refresh_jti: Mapped[str]
+    exp: Mapped[int] = mapped_column(BigInteger)
     user: Mapped[UsersORM] = relationship(back_populates="jwt_tokens")

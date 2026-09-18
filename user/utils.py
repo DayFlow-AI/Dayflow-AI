@@ -1,8 +1,12 @@
+from time import time
 from uuid import uuid4
 
 from fastapi import HTTPException
 from fastapi_jwt import JwtAccessBearerCookie, JwtRefreshCookie
+from fastapi_jwt.jwt_backends import AuthlibJWTBackend
+from fastapi_jwt.jwt_backends.abstract_backend import BackendException
 from pwdlib import PasswordHash
+from sqlalchemy import delete
 from sqlalchemy.exc import SQLAlchemyError
 
 from db_conf.db import SessionDep
@@ -15,6 +19,7 @@ sec_key_refresh = settings.jwt_secret_refresh_key
 password_hash = PasswordHash.recommended()
 access_security = JwtAccessBearerCookie(secret_key=sec_key_access)
 refresh_security = JwtRefreshCookie(secret_key=sec_key_refresh)
+auth_jwt = AuthlibJWTBackend()
 
 
 def access_token_conf(access_token) -> dict:
@@ -74,10 +79,16 @@ async def gen_jwt(
             unique_identifier=jti_access,
         )
         if refresh_token:
+            exp = auth_jwt.decode(refresh_token, sec_key_refresh).get("exp")
+            await db.execute(
+                delete(UsersJWTStorageORM).where(
+                    UsersJWTStorageORM.user_id == hashed_user,
+                    UsersJWTStorageORM.exp < time()
+                )
+            )
             db.add(
                 UsersJWTStorageORM(
-                    user_id=hashed_user,
-                    refresh_jti=jti_refresh,
+                    user_id=hashed_user, refresh_jti=jti_refresh, exp=exp
                 )
             )
         await db.commit()
@@ -87,3 +98,5 @@ async def gen_jwt(
     except SQLAlchemyError:
         await db.rollback()
         raise HTTPException(status_code=500, detail="Cannot create new jwt")
+    except BackendException as e:
+        raise HTTPException(status_code=401, detail=str(e))
