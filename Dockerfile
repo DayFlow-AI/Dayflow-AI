@@ -26,5 +26,4 @@ USER dayflow
 
 EXPOSE 8000
 
-# миграции гоняются до старта, чтобы стенд всегда поднимался на актуальной схеме
 CMD ["sh", "-c", "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000"]
