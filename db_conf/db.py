@@ -11,11 +11,12 @@ from proj_settings.env_conf import settings
 db_pass = settings.db_pass
 db_user = settings.db_user
 db_schema = settings.db_schema
+db_host = settings.db_host
 
 if not all([db_user, db_pass, db_schema]):
     raise RuntimeError("environment variables not set check env file")
 
-db_url = f"postgresql+psycopg://{db_user}:{db_pass}@localhost:5432/{db_schema}"
+db_url = f"postgresql+psycopg://{db_user}:{db_pass}@{db_host}:5432/{db_schema}"
 engine = create_async_engine(db_url)
 
 new_session = async_sessionmaker(engine, expire_on_commit=False)

@@ -83,7 +83,7 @@ async def gen_jwt(
             await db.execute(
                 delete(UsersJWTStorageORM).where(
                     UsersJWTStorageORM.user_id == hashed_user,
-                    UsersJWTStorageORM.exp < time()
+                    UsersJWTStorageORM.exp < time(),
                 )
             )
             db.add(

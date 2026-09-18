@@ -38,5 +38,3 @@ async def plan_board_add(
         return HTTPException(status_code=500, detail=str(e))
 
     return ChatOutSchema.model_validate(user)
-
-

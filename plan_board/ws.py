@@ -5,11 +5,9 @@ from fastapi import (
     WebSocketException,
 )
 from fastapi.logger import logger
-from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
 
 from db_conf.db import SessionDep
-from plan_board.models import ChatORM
 from plan_board.utils import access_security
 
 ws_router = APIRouter()

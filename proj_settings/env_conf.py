@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     db_pass: str
     db_schema: str
     db_user: str
+    db_host: str = "localhost"
     user_scopes: list[str]
 
     host: str = "127.0.0.1"

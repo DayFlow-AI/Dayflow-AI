@@ -37,7 +37,6 @@ class CardORM(Base):
         secondaryjoin="CardORM.id == card_links.c.to_card_id",
     )
 
-
     pos_x: Mapped[float] = mapped_column(Float, default=0.0)
     pos_y: Mapped[float] = mapped_column(Float, default=0.0)
     width: Mapped[float] = mapped_column(
@@ -66,12 +65,12 @@ card_manager = Table(
     Column(
         "from_card_id",
         Integer,
-        ForeignKey("card_orm.id", ondelete="CASCADE"), index=True),
+        ForeignKey("card_orm.id", ondelete="CASCADE"),
+        index=True,
+    ),
     Column(
-        "to_card_id",
-        Integer,
-        ForeignKey("card_orm.id", ondelete="CASCADE"), index=True),
-
+        "to_card_id", Integer, ForeignKey("card_orm.id", ondelete="CASCADE"), index=True
+    ),
     CheckConstraint("from_card_id <> to_card_id", name="ck_no_self_link"),
     UniqueConstraint("from_card_id", "to_card_id", name="uq_card_link"),
 )

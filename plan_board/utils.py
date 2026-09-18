@@ -1,5 +1,4 @@
 from enum import Enum
-from multiprocessing.managers import BaseManager
 
 from fastapi import WebSocketException
 from fastapi.logger import logger
@@ -46,7 +45,6 @@ class CardColor(Enum):
     new = "#64748b"
 
 
-
 class ConnectionManager:
     def __init__(self, chat_id: int):
         self.connection = {chat_id: set()}
@@ -64,4 +62,3 @@ class ConnectionManager:
     async def pool_messages(self, chat_id: int, messages: str):
         for user in self.connection[chat_id]:
             await user.send_text(messages)
-
