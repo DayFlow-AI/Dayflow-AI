@@ -28,7 +28,9 @@ client = AsyncOAuth2Client(
 )
 
 
-@oauth2_router.post("/auth/callback", status_code=status.HTTP_200_OK)
+@oauth2_router.post("/auth/callback", status_code=status.HTTP_200_OK,
+response_model=OauthSchema
+)
 async def auth_callback(code: OauthSchema, db: SessionDep) -> Response:
     try:
         token = await client.fetch_token(

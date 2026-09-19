@@ -90,7 +90,7 @@ async def login_user(login: UserLoginSchema, db: SessionDep) -> Response:
         401: {"description": "not authorized / session expired"},
     },
 )
-async def logout(db: SessionDep, credentials: RefreshCredentials) -> Response:
+async def logout(db: SessionDep, credentials: AccessCredentials) -> Response:
     await db.execute(
         delete(UsersJWTStorageORM).where(
             UsersJWTStorageORM.refresh_jti == credentials.jti
